@@ -2,7 +2,7 @@
  * @author Juliano Castilho <julianocomg@gmail.com>
  */
 import React from 'react'
-import { View } from 'react-native'
+import { View, Platform } from 'react-native'
 import serialize from './serialize'
 
 class Form extends React.Component {
@@ -22,19 +22,19 @@ class Form extends React.Component {
    * @param {String} name
    * @param {String} value
    */
-  _persistFieldValue({ init, fieldId, fieldName, fieldValue, fieldRequired, fieldType }) {
-    let valid = this._checkFieldValid(fieldType, fieldValue)
+  _persistFieldValue({ fieldId, fieldName, fieldValue, fieldRequired, fieldType, fieldValidate }) {
 
     this.fields[fieldId] = {
       name: fieldName,
       value: fieldValue,
       required: fieldRequired,
-      valid
+      type: fieldType,
+      validate: fieldValidate,
     }
 
-    if (init) {
-      this.fields[fieldId].defaultValue = fieldValue;
-    }
+    let valid = this._checkFieldValid(this.fields[fieldId]);
+
+    this.fields[fieldId]['valid'] = valid;
   }
 
   /**
@@ -50,23 +50,6 @@ class Form extends React.Component {
     return serialize(fieldsArray)
   }
 
-  reset() {
-    const allowedFieldTypes = this._getAllowedFormFieldTypes();
-
-    for (let i in this.fields) {
-      let field = this.fields[i];
-      this.fields[i].value = field.defaultValue || null;
-      this.fields[i].valid = this._checkFieldValid(field.name, this.fields[i].value);
-
-      // 调用预设的 reset 函数
-      let ref = this.refs[i];
-      let reset =
-        allowedFieldTypes[ref.props.type] && allowedFieldTypes[ref.props.type].reset;
-      reset && reset(ref, field);
-    }
-
-    this.props.onValid(this.checkFormValid());
-  }
 
   /**
   * @private
@@ -104,12 +87,8 @@ class Form extends React.Component {
       ...this.props.customFields,
 
       'TextInput': {
-        defaultValue: '',
         valueProp: 'defaultValue',
         callbackProp: 'onChangeText',
-        reset(ref, field) {
-          ref.input.clear();
-        }
       },
       'Switch': {
         controlled: true,
@@ -147,12 +126,11 @@ class Form extends React.Component {
    * @return {Boolean}
    */
   checkFormValid() {
+    let fieldKeys = Object.keys(this.fields);
     let flag = true;
-    let { fields } = this;
-    let keys = Object.keys(fields);
-    for (let i = 0, len = keys.length; i < len; i++) {
-      let key = keys[i];
-      if (fields[key].required && !fields[key].valid) {
+    for (let i = 0, len = fieldKeys.length; i < len; i++) {
+      let key = fieldKeys[i];
+      if (this.fields[key].required && !this.fields[key].valid) {
         flag = false;
         break;
       }
@@ -160,10 +138,17 @@ class Form extends React.Component {
     return flag;
   }
 
-  _checkFieldValid(name, value) {
-    switch (name) {
+  _checkFieldValid({type, value, validate}) {
+    if (typeof validate === 'function') {
+      return validate(value);
+    }
+
+    switch (type) {
       case 'TextInput':
         return !!(value && value.length > 0);
+        break;
+      case 'Switch':
+        return value;
         break;
       default:
         return false;
@@ -186,13 +171,16 @@ class Form extends React.Component {
       const fieldType = element.props.type
       const fieldName = element.props.name
       const fieldId = fieldName + (element.key || '');
-      const fieldValue =
-        element.props[allowedField.valueProp] ||
-        element.props.value ||
-        allowedField.defaultValue;
+      const fieldValidate = element.props.validate;
 
       const allowedField = allowedFieldTypes[fieldType]
       const isValidField = !!(allowedField && fieldName)
+
+      const fieldValue =
+        allowedField &&
+        (element.props[allowedField.valueProp] ||
+        element.props.value ||
+        allowedField.defaultValue);
 
       let props = {}
 
@@ -230,6 +218,7 @@ class Form extends React.Component {
           fieldName,
           fieldType,
           fieldRequired,
+          fieldValidate,
           fieldValue: value,
         })
 
@@ -250,11 +239,11 @@ class Form extends React.Component {
 
       if (!this.fields[fieldId]) {
         this._persistFieldValue({
-          init: true
           fieldId,
           fieldName,
           fieldValue,
           fieldRequired,
+          fieldValidate,
           fieldType,
         })
       }
@@ -280,18 +269,23 @@ class Form extends React.Component {
       </View>
     )
   }
+
+  componentDidMount() {
+    this.props.onValid(this.checkFormValid());
+  }
 }
 
 Form.propTypes = {
   onValid: React.PropTypes.func,
-  customFields: React.PropTypes.object, 
+  customFields: React.PropTypes.object
 }
 
 /**
  * @type {Object}
  */
 Form.defaultProps = {
-  customFields: {}
+  customFields: {},
+  onValid: function() {}
 }
 
 export default Form

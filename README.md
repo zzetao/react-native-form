@@ -15,6 +15,8 @@ Just put your fields inside the form, with 2 props:
 
 ***`key`*** => Required for fields with the same name
 
+***`required`***
+
 
 ```javascript
 import Form from 'react-native-form'
