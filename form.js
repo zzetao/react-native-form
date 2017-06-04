@@ -22,19 +22,24 @@ class Form extends React.Component {
    * @param {String} name
    * @param {String} value
    */
-  _persistFieldValue({ fieldId, fieldName, fieldValue, fieldRequired, fieldType, fieldValidate }) {
+  _persistFieldValue({ init, fieldId, fieldName, fieldValue, fieldRequired, fieldType, fieldValidate }) {
 
     this.fields[fieldId] = {
       name: fieldName,
       value: fieldValue,
       required: fieldRequired,
       type: fieldType,
+      defaultValue: this.fields[fieldId] && this.fields[fieldId].defaultValue,
       validate: fieldValidate,
     }
 
     let valid = this._checkFieldValid(this.fields[fieldId]);
 
     this.fields[fieldId]['valid'] = valid;
+
+    if (init) {
+      this.fields[fieldId].defaultValue = fieldValue;
+    }
   }
 
   /**
@@ -50,6 +55,23 @@ class Form extends React.Component {
     return serialize(fieldsArray)
   }
 
+  reset() {
+    const allowedFieldTypes = this._getAllowedFormFieldTypes();
+    for (let i in this.fields) {
+      let field = this.fields[i];
+
+      // 调用预设的 reset 函数
+      let ref = this.refs[i];
+      let reset =
+        allowedFieldTypes[ref.props.type] && allowedFieldTypes[ref.props.type].reset;
+      reset && reset(ref, field);
+
+      this.fields[i].value = field.defaultValue || null;
+      this.fields[i].valid = this._checkFieldValid(this.fields[i]);
+    }
+
+    this.props.onValid(this.checkFormValid());
+  }
 
   /**
   * @private
@@ -87,21 +109,41 @@ class Form extends React.Component {
       ...this.props.customFields,
 
       'TextInput': {
+        defaultValue: '',
         valueProp: 'defaultValue',
         callbackProp: 'onChangeText',
+        reset(ref, field) {
+          ref.input.setNativeProps({
+            text: field.defaultValue
+          });
+        }
       },
       'Switch': {
+        defaultValue: false,
         controlled: true,
         valueProp: 'value',
-        callbackProp: 'onValueChange'
+        callbackProp: 'onValueChange',
+        reset(ref, field) {
+          setTimeout(() => {
+            if (Platform.OS === 'android') {
+              ref._rctSwitch.setNativeProps({on: !!field.defaultValue});
+            } else {
+              ref._rctSwitch.setNativeProps({value: !!field.defaultValue});
+            }
+          }, 0)
+        }
       },
       'SliderIOS': {
         valueProp: 'value',
         callbackProp: 'onSlidingComplete'
       },
       'Slider': {
+        defaultValue: 0,
         valueProp: 'value',
-        callbackProp: 'onSlidingComplete'
+        callbackProp: 'onSlidingComplete',
+        reset(ref, field) {
+          ref.setNativeProps({value: field.defaultValue});
+        }
       },
       'Picker': {
         controlled: true,
@@ -213,6 +255,7 @@ class Form extends React.Component {
       }
 
       props[allowedField.callbackProp] = value => {
+        console.log('value', value)
         this._persistFieldValue({
           fieldId,
           fieldName,
@@ -239,6 +282,7 @@ class Form extends React.Component {
 
       if (!this.fields[fieldId]) {
         this._persistFieldValue({
+          init: true,
           fieldId,
           fieldName,
           fieldValue,
@@ -277,15 +321,15 @@ class Form extends React.Component {
 
 Form.propTypes = {
   onValid: React.PropTypes.func,
-  customFields: React.PropTypes.object
+  validate: React.PropTypes.func,
+  customFields: React.PropTypes.object,
 }
 
 /**
  * @type {Object}
  */
 Form.defaultProps = {
-  customFields: {},
-  onValid: function() {}
+  customFields: {}
 }
 
 export default Form
